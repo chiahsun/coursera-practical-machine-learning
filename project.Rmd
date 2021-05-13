@@ -1,0 +1,103 @@
+---
+title: "PracticalMachineLearningCourseProject"
+author: "Chia-Hsun Cheng"
+date: "5/13/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model and Prediction
+
+### Predictor Selection
+
+```{r}
+set.seed(12345)
+pmlTraining <- read.csv("./pml-training.csv")
+pmlTesting <- read.csv("./pml-testing.csv")
+
+unique(pmlTraining$classe)
+
+selectedTraining <- pmlTraining[c("num_window", "roll_belt", "pitch_belt", "yaw_belt", "total_accel_belt", "gyros_belt_x", "gyros_belt_y", "gyros_belt_z", "accel_belt_x", "accel_belt_y", "accel_belt_z", "magnet_arm_x", "magnet_arm_y", "magnet_arm_z", "roll_forearm", "pitch_forearm", "yaw_forearm", "total_accel_arm", "gyros_arm_x", "gyros_arm_y", "gyros_arm_z", "accel_arm_x", "accel_arm_y", "accel_arm_z","magnet_arm_x","magnet_arm_y", "magnet_arm_z","roll_dumbbell","pitch_dumbbell","yaw_dumbbell","total_accel_dumbbell", "gyros_dumbbell_x","gyros_dumbbell_y", "gyros_dumbbell_z", "accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y", "magnet_dumbbell_z","roll_forearm","pitch_forearm", "yaw_forearm", "total_accel_forearm","gyros_forearm_x","gyros_forearm_y", "gyros_forearm_z","accel_forearm_x", "accel_forearm_y","accel_forearm_z", "magnet_forearm_x","magnet_forearm_y", "magnet_forearm_z", "classe")]
+selectedTraining$classe <- as.factor(selectedTraining$classe)
+library(caret)
+# preProcessObjTraining <- preProcess(selectedTraining, method="knnImpute") # No need to impute since no NAs in selected columns
+# processedTraining <- predict(preProcessObjTraining, selectedTraining)
+processedTraining <- selectedTraining
+
+validation <- pmlTesting[c("num_window", "roll_belt", "pitch_belt", "yaw_belt", "total_accel_belt", "gyros_belt_x", "gyros_belt_y", "gyros_belt_z", "accel_belt_x", "accel_belt_y", "accel_belt_z", "magnet_arm_x", "magnet_arm_y", "magnet_arm_z", "roll_forearm", "pitch_forearm", "yaw_forearm", "total_accel_arm", "gyros_arm_x", "gyros_arm_y", "gyros_arm_z", "accel_arm_x", "accel_arm_y", "accel_arm_z","magnet_arm_x","magnet_arm_y","magnet_arm_z","roll_dumbbell","pitch_dumbbell","yaw_dumbbell","total_accel_dumbbell","gyros_dumbbell_x","gyros_dumbbell_y", "gyros_dumbbell_z","accel_dumbbell_x","accel_dumbbell_y","accel_dumbbell_z","magnet_dumbbell_x","magnet_dumbbell_y", "magnet_dumbbell_z","roll_forearm","pitch_forearm", "yaw_forearm", "total_accel_forearm","gyros_forearm_x","gyros_forearm_y", "gyros_forearm_z","accel_forearm_x", "accel_forearm_y","accel_forearm_z", "magnet_forearm_x","magnet_forearm_y", "magnet_forearm_z")]
+```
+
+* We first notice that for `pmlTesting`, there are many `NA` columns, so we only consider those valid columns for our `pmlTraining`.
+* Since `classe` is of type characters so we make it as factor variable.
+
+### Cross Validation
+
+```{r}
+inTrain <- createDataPartition(y=processedTraining$classe, p=0.7, list=FALSE)
+training <- processedTraining[inTrain,]
+testing <- processedTraining[-inTrain,]
+```
+
+| | number of row | 
+| :-: | :-: |
+| train | `r nrow(training)` | 
+| test | `r nrow(testing)` | 
+| validation (no `classe` variable) | `r nrow(validation)` |
+
+* We use the basic cross validation by splitting our training set into `training` and `test` set. The original test set would be the validation set.
+
+### Model Training
+
+```{r}
+training <- training[sample(nrow(training)), ]
+#usedTraining <- training[1:100,] # For faster test, we only use a subset of the training data
+usedTraining <- training # Use this for final model build
+```
+
+```{r}
+modRF <- train(classe ~ ., data=usedTraining, method="rf", prox=TRUE) 
+mean(predict(modRF) == usedTraining$classe)
+errRateRF <- mean(predict(modRF, newdata=testing) == testing$classe)
+```
+
+```{r}
+modGBM <- train(classe ~ ., data=usedTraining, method="gbm", verbose=FALSE)
+mean(predict(modGBM) == usedTraining$classe)
+errRateGBM <- mean(predict(modGBM, newdata=testing) == testing$classe)
+```
+
+```{r, warning=FALSE}
+modLDA <- train(classe ~ ., data=usedTraining, method="lda", verbose=FALSE)
+mean(predict(modLDA) == usedTraining$classe)
+errRateLDA <- mean(predict(modLDA, newdata=testing) == testing$classe)
+```
+
+```{r}
+library(e1071)
+modSVM <- svm(classe ~ ., data=usedTraining)
+mean(predict(modSVM) == usedTraining$classe)
+errRateSVM <- mean(predict(modSVM, newdata=testing) == testing$classe)
+```
+
+| model | out of sample error | 
+| :-: | :-: |
+| random forest | `r errRateRF` | 
+| generalized boosted | `r errRateGBM` | 
+| linear discriminant analysis | `r errRateLDA` |
+| support vector machine | `r errRateSVM` |
+
+### Prediction
+
+```{r}
+predict(modRF, newdata=validation)
+predict(modGBM, newdata=validation)
+predict(modLDA, newdata=validation)
+predict(modSVM, newdata=validation)
+```
+
+We choose the one that has the lowest out of sample error in the previous step.
